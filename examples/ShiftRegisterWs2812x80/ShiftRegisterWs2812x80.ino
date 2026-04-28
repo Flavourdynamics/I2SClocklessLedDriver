@@ -1,17 +1,13 @@
-#ifdef PLATFORM_VERSION
+#include <ShiftRegisterClocklessLedDriver.h>
 
-#include "Arduino.h"
-#include "ShiftRegisterClocklessLedDriver.h"
-
-// Mock 80-output board map. Replace these with the actual board GPIOs.
+// Replace these with the board's actual 10 SER GPIOs.
 // SER_PINS[0] drives outputs 0..7, SER_PINS[1] drives outputs 8..15, etc.
 static constexpr uint8_t SER_PINS[10] = {
     4, 6, 7, 8, 9,
     10, 11, 12, 13, 14,
 };
 
-// Two symmetrical shift-register banks. The driver pulses both clocks and both
-// latches together while keeping all 10 SER streams independent.
+// The two clock/latch domains are pulsed with duplicate timing.
 static constexpr uint8_t SRCLK_PINS[2] = {25, 26};
 static constexpr uint8_t RCLK_PINS[2] = {24, 27};
 static constexpr uint8_t PIN_BLINK = 5;
@@ -45,7 +41,7 @@ static Rgb colorWheel(uint8_t pos) {
 static void renderPattern(uint8_t phase) {
   for (uint8_t output = 0; output < NUM_OUTPUTS; output++) {
     for (uint16_t i = 0; i < NUM_LEDS_PER_OUTPUT; i++) {
-      Rgb c = colorWheel(static_cast<uint8_t>(phase + output * 3 + i * 5));
+      Rgb c = colorWheel(static_cast<uint8_t>(phase + output * 3 + i * 7));
       uint8_t* pixel = leds + ((static_cast<size_t>(output) * NUM_LEDS_PER_OUTPUT + i) * 3u);
       pixel[0] = c.r;
       pixel[1] = c.g;
@@ -61,22 +57,13 @@ void setup() {
   pinMode(PIN_BLINK, OUTPUT);
   digitalWrite(PIN_BLINK, LOW);
 
-  Serial.println();
-  Serial.println("ESP32-P4 80x80 WS2812 shift-register stress test");
-  Serial.println("Mock pin map: replace SER_PINS/SRCLK_PINS/RCLK_PINS with board GPIOs");
-  Serial.printf("Outputs: %u, LEDs/output: %u, total LEDs: %lu\n",
-                NUM_OUTPUTS,
-                NUM_LEDS_PER_OUTPUT,
-                static_cast<unsigned long>(TOTAL_LEDS));
-
-  const bool ok = driver.initled(leds,
-                                SER_PINS, 10,
-                                SRCLK_PINS, 2,
-                                RCLK_PINS, 2,
-                                NUM_OUTPUTS,
-                                NUM_LEDS_PER_OUTPUT,
-                                ORDER_GRB);
-  if (!ok) {
+  if (!driver.initled(leds,
+                      SER_PINS, 10,
+                      SRCLK_PINS, 2,
+                      RCLK_PINS, 2,
+                      NUM_OUTPUTS,
+                      NUM_LEDS_PER_OUTPUT,
+                      ORDER_GRB)) {
     Serial.printf("Shift-register driver init failed: %s\n", driver.lastError());
     return;
   }
@@ -85,12 +72,9 @@ void setup() {
   driver.clear();
   driver.showPixels();
 
-  Serial.printf("PARLIO sample clock: %lu Hz, SRCLK: %lu Hz\n",
-                static_cast<unsigned long>(driver.shiftSampleHz()),
-                static_cast<unsigned long>(driver.shiftClockHz()));
-  Serial.printf("Frame buffer: %u bytes, frame samples: %u\n",
-                static_cast<unsigned>(driver.frameBytes()),
-                static_cast<unsigned>(driver.frameSamples()));
+  Serial.printf("80x80 shift-register test: %lu LEDs, frame buffer %u bytes\n",
+                static_cast<unsigned long>(TOTAL_LEDS),
+                static_cast<unsigned>(driver.frameBytes()));
 }
 
 void loop() {
@@ -110,37 +94,31 @@ void loop() {
     digitalWrite(PIN_BLINK, blinkState ? HIGH : LOW);
   }
 
-  if (driver.isReady()) {
-    const uint32_t renderStartUs = micros();
-    renderPattern(phase++);
-    const uint32_t showStartUs = micros();
-    if (driver.showPixels()) {
-      frames++;
-    } else {
-      failedFrames++;
-    }
-    const uint32_t showEndUs = micros();
-    renderUs += static_cast<uint32_t>(showStartUs - renderStartUs);
-    showUs += static_cast<uint32_t>(showEndUs - showStartUs);
+  const uint32_t renderStartUs = micros();
+  renderPattern(phase++);
+  const uint32_t showStartUs = micros();
+  if (driver.showPixels()) {
+    frames++;
+  } else {
+    failedFrames++;
   }
+  const uint32_t showEndUs = micros();
+  renderUs += static_cast<uint32_t>(showStartUs - renderStartUs);
+  showUs += static_cast<uint32_t>(showEndUs - showStartUs);
 
   const uint32_t elapsed = now - lastLogMs;
   if (elapsed >= 1000) {
     const uint32_t attempts = frames + failedFrames;
-    const float fps = frames * 1000.0f / elapsed;
     const float avgRenderMs = attempts ? (renderUs / 1000.0f) / attempts : 0.0f;
     const float avgShowMs = attempts ? (showUs / 1000.0f) / attempts : 0.0f;
     Serial.printf("FPS: %.2f | render: %.2f ms | show: %.2f ms | frames: %lu | failed: %lu | LEDs: %lu | frame bytes: %u\n",
-                  fps,
+                  frames * 1000.0f / elapsed,
                   avgRenderMs,
                   avgShowMs,
                   static_cast<unsigned long>(frames),
                   static_cast<unsigned long>(failedFrames),
                   static_cast<unsigned long>(TOTAL_LEDS),
                   static_cast<unsigned>(driver.frameBytes()));
-    if (failedFrames > 0) {
-      Serial.printf("Last driver error: %s\n", driver.lastError());
-    }
     frames = 0;
     failedFrames = 0;
     renderUs = 0;
@@ -148,5 +126,3 @@ void loop() {
     lastLogMs = now;
   }
 }
-
-#endif  // PLATFORM_VERSION

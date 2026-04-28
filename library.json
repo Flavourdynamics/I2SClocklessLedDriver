@@ -18,6 +18,9 @@
             "-<examples/>"
         ]
     },
-  "headers": "I2SClocklessLedDriver.h"
+  "headers": [
+    "I2SClocklessLedDriver.h",
+    "ShiftRegisterClocklessLedDriver.h"
+  ]
 }
 
