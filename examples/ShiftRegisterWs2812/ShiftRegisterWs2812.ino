@@ -1,9 +1,8 @@
 #include <ShiftRegisterClocklessLedDriver.h>
 
-static constexpr uint8_t PIN_SER = 4;
-static constexpr uint8_t PIN_SRCLK = 25;
-static constexpr uint8_t PIN_RCLK = 24;
-static constexpr uint8_t PIN_BLINK = 5;
+static constexpr uint8_t PIN_SER = 50;
+static constexpr uint8_t PIN_SRCLK = 51;
+static constexpr uint8_t PIN_RCLK = 52;
 
 static constexpr uint8_t NUM_OUTPUTS = 8;
 static constexpr uint16_t NUM_LEDS_PER_OUTPUT = 30;
@@ -43,9 +42,6 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  pinMode(PIN_BLINK, OUTPUT);
-  digitalWrite(PIN_BLINK, LOW);
-
   if (!driver.initled(leds, PIN_SER, PIN_SRCLK, PIN_RCLK, NUM_OUTPUTS, NUM_LEDS_PER_OUTPUT, ORDER_GRB)) {
     Serial.printf("Shift-register driver init failed: %s\n", driver.lastError());
     return;
@@ -58,15 +54,6 @@ void setup() {
 
 void loop() {
   static uint8_t phase = 0;
-  static uint32_t lastBlinkMs = 0;
-  static bool blinkState = false;
-
-  const uint32_t now = millis();
-  if (now - lastBlinkMs >= 1000) {
-    lastBlinkMs = now;
-    blinkState = !blinkState;
-    digitalWrite(PIN_BLINK, blinkState ? HIGH : LOW);
-  }
 
   renderPattern(phase++);
   driver.showPixels();

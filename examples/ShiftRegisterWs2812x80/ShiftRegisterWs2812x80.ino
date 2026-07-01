@@ -1,16 +1,15 @@
 #include <ShiftRegisterClocklessLedDriver.h>
 
-// Replace these with the board's actual 10 SER GPIOs.
+// Starshroud-Contact board map from MCU_SER_1..MCU_SER_10.
 // SER_PINS[0] drives outputs 0..7, SER_PINS[1] drives outputs 8..15, etc.
 static constexpr uint8_t SER_PINS[10] = {
-    4, 6, 7, 8, 9,
-    10, 11, 12, 13, 14,
+    50, 28, 29, 30, 31,
+    26, 23, 22, 21, 20,
 };
 
-// The two clock/latch domains are pulsed with duplicate timing.
-static constexpr uint8_t SRCLK_PINS[2] = {25, 26};
-static constexpr uint8_t RCLK_PINS[2] = {24, 27};
-static constexpr uint8_t PIN_BLINK = 5;
+// The board fans these MCU nets out to left/right shifted clock/latch domains.
+static constexpr uint8_t SRCLK_PINS[1] = {51};
+static constexpr uint8_t RCLK_PINS[1] = {52};
 
 static constexpr uint8_t NUM_OUTPUTS = 80;
 static constexpr uint16_t NUM_LEDS_PER_OUTPUT = 80;
@@ -54,13 +53,10 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  pinMode(PIN_BLINK, OUTPUT);
-  digitalWrite(PIN_BLINK, LOW);
-
   if (!driver.initled(leds,
                       SER_PINS, 10,
-                      SRCLK_PINS, 2,
-                      RCLK_PINS, 2,
+                      SRCLK_PINS, 1,
+                      RCLK_PINS, 1,
                       NUM_OUTPUTS,
                       NUM_LEDS_PER_OUTPUT,
                       ORDER_GRB)) {
@@ -79,20 +75,13 @@ void setup() {
 
 void loop() {
   static uint8_t phase = 0;
-  static uint32_t lastBlinkMs = 0;
   static uint32_t lastLogMs = 0;
   static uint32_t frames = 0;
   static uint32_t failedFrames = 0;
   static uint64_t renderUs = 0;
   static uint64_t showUs = 0;
-  static bool blinkState = false;
 
   const uint32_t now = millis();
-  if (now - lastBlinkMs >= 1000) {
-    lastBlinkMs = now;
-    blinkState = !blinkState;
-    digitalWrite(PIN_BLINK, blinkState ? HIGH : LOW);
-  }
 
   const uint32_t renderStartUs = micros();
   renderPattern(phase++);
