@@ -816,7 +816,6 @@ class I2SClocklessLedDriver {
       initSuccess = false;
       return false;
     }
-    ESP_LOGI(TAG, "PARLIO TX unit initialized (%u outputs, %u LEDs/output)", (unsigned)numStrips, (unsigned)numLedPerStrip);
     return true;
   }
 #endif
@@ -1073,7 +1072,6 @@ class I2SClocklessLedDriver {
     uint32_t total = 0;
     uint32_t posOnStrip = pos;
     if (pos > totalLeds - 1) {
-      printf("Position out of bound %lu > %lu\n", pos, totalLeds - 1);
       return;
     }
     while (total <= pos) {
@@ -1391,10 +1389,8 @@ class I2SClocklessLedDriver {
   void createhardwareMap() {
 #ifdef __HARDWARE_MAP
     if (mapLed == NULL) {
-      printf("no mapapig\r\n");
       return;
     }
-    ESP_LOGE(TAG, "trying to map2");
     uint32_t offset2 = 0;
     for (uint32_t leddisp = 0; leddisp < numLedPerStrip; leddisp++) {
       uint32_t offset = 0;

@@ -29,7 +29,6 @@ class FrameBuffer {
     for (int i = 0; i < NB_FRAME; i++) {
       frames[i] = (Pixel*)calloc(numLed, sizeof(Pixel));
       if (!frames[i]) {
-        printf("no memory\n");
         // Consider freeing previously allocated frames here
         for (int j = 0; j < i; j++) {
           free(frames[j]);

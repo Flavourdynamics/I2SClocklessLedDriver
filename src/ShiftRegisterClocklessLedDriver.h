@@ -95,6 +95,29 @@ class ShiftRegisterClocklessLedDriver {
     return initled(leds, pins, numOutputs, numLedPerOutput, colorArrangement);
   }
 
+  bool begin(uint8_t* leds,
+             const uint8_t* serPins,
+             uint8_t serCount,
+             const uint8_t* srclkPins,
+             uint8_t srclkCount,
+             const uint8_t* rclkPins,
+             uint8_t rclkCount,
+             uint8_t numOutputs,
+             uint16_t numLedPerOutput,
+             ColorArrangement colorArrangement = ORDER_GRB) {
+    return initled(leds, serPins, serCount, srclkPins, srclkCount, rclkPins, rclkCount, numOutputs, numLedPerOutput, colorArrangement);
+  }
+
+  bool begin(uint8_t* leds,
+             uint8_t serPin,
+             uint8_t srclkPin,
+             uint8_t rclkPin,
+             uint8_t numOutputs,
+             uint16_t numLedPerOutput,
+             ColorArrangement colorArrangement = ORDER_GRB) {
+    return initled(leds, serPin, srclkPin, rclkPin, numOutputs, numLedPerOutput, colorArrangement);
+  }
+
   void end();
 
   void setBrightness(uint8_t brightness);
