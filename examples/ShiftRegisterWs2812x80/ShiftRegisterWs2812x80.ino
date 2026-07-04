@@ -87,7 +87,7 @@ void setup() {
     return;
   }
 
-  driver.setBrightness(15);
+  driver.setBrightness(10);
   driver.clear();
   driver.showPixels();
 

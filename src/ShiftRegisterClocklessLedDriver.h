@@ -160,6 +160,7 @@ class ShiftRegisterClocklessLedDriver {
   static constexpr uint8_t SHIFT_SETTLE_SAMPLES = 3;
   static constexpr uint8_t LATCH_HIGH_SAMPLES = 3;
   static constexpr uint8_t LATCH_LOW_SAMPLES = 2;
+  static constexpr uint8_t CHUNK_PREROLL_SAMPLES = 16;
 
   static uint16_t nsToSamples(uint32_t ns);
 

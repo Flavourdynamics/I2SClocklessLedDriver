@@ -561,26 +561,70 @@ bool ShiftRegisterClocklessLedDriver::transmitFrame(size_t samples) {
     return false;
   }
 
-  const uint8_t* chunk = txBuffer_;
   size_t remainingSamples = samples;
+  size_t transmittedSamples = 0;
+  const size_t dataStartSample = resetSamples_;
+  const size_t dataEndSample =
+      dataStartSample +
+      static_cast<size_t>(numLedPerOutput_) * channelsPerLight_ * 8u * bitSamples_;
+  size_t lowTailBoundaryOffset =
+      static_cast<size_t>(t1hSamples_) + shiftUpdateSamples_ - latchEdgeOffset_;
+  if (dataWidth_ == 4 && (lowTailBoundaryOffset & 1u) != 0) {
+    lowTailBoundaryOffset--;
+  }
+  const bool hasLowTailBoundary =
+      bitSamples_ > 0 && lowTailBoundaryOffset > 0 &&
+      lowTailBoundaryOffset < bitSamples_;
   while (remainingSamples > 0) {
-    size_t chunkSamples = remainingSamples;
-    if (chunkSamples > maxSamplesPerChunk) {
-      chunkSamples = maxSamplesPerChunk;
+    size_t effectiveMaxSamples = maxSamplesPerChunk;
+    if (transmittedSamples >= CHUNK_PREROLL_SAMPLES &&
+        effectiveMaxSamples > CHUNK_PREROLL_SAMPLES) {
+      effectiveMaxSamples -= CHUNK_PREROLL_SAMPLES;
     }
+
+    size_t chunkSamples = remainingSamples;
+    if (chunkSamples > effectiveMaxSamples) {
+      chunkSamples = effectiveMaxSamples;
+    }
+
+    const size_t chunkEnd = transmittedSamples + chunkSamples;
+    if (hasLowTailBoundary && transmittedSamples < dataEndSample &&
+        chunkEnd > dataStartSample && chunkEnd < dataEndSample) {
+      const size_t chunkEndInData = chunkEnd - dataStartSample;
+      size_t boundaryBit = chunkEndInData / bitSamples_;
+      size_t lowTailBoundary =
+          dataStartSample + boundaryBit * bitSamples_ + lowTailBoundaryOffset;
+      if (lowTailBoundary > chunkEnd && boundaryBit > 0) {
+        boundaryBit--;
+        lowTailBoundary =
+            dataStartSample + boundaryBit * bitSamples_ + lowTailBoundaryOffset;
+      }
+      if (lowTailBoundary > transmittedSamples && lowTailBoundary <= chunkEnd) {
+        chunkSamples = lowTailBoundary - transmittedSamples;
+      }
+    }
+
     if (dataWidth_ == 4 && (chunkSamples & 1u) != 0 && chunkSamples > 1) {
       chunkSamples--;
     }
 
+    size_t transmitStartSample = transmittedSamples;
+    size_t transmitSamples = chunkSamples;
+    if (transmittedSamples >= CHUNK_PREROLL_SAMPLES) {
+      transmitStartSample -= CHUNK_PREROLL_SAMPLES;
+      transmitSamples += CHUNK_PREROLL_SAMPLES;
+    }
+    const uint8_t* transmitChunk = txBuffer_ + bytesForSamples(transmitStartSample);
+
     const esp_err_t transmitErr =
-        parlio_tx_unit_transmit(txUnit, chunk, chunkSamples * dataWidth_, &txConfig);
+        parlio_tx_unit_transmit(txUnit, transmitChunk, transmitSamples * dataWidth_, &txConfig);
     if (transmitErr != ESP_OK) {
       setError("showPixels: parlio_tx_unit_transmit failed");
       return false;
     }
 
-    chunk += bytesForSamples(chunkSamples);
     remainingSamples -= chunkSamples;
+    transmittedSamples += chunkSamples;
   }
 #endif
 
