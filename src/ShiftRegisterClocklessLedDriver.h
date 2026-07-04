@@ -5,6 +5,10 @@
 
 #include "colorarrangement.h"
 
+#ifndef SHIFT_REGISTER_EXPERIMENTAL_SINGLE_TRANSACTION
+#define SHIFT_REGISTER_EXPERIMENTAL_SINGLE_TRANSACTION 0
+#endif
+
 /**
  * ShiftRegisterClocklessLedDriver
  *
@@ -152,11 +156,10 @@ class ShiftRegisterClocklessLedDriver {
   static constexpr uint32_t WS2812_BIT_HZ = 800000;
   static constexpr uint32_t SHIFT_SAMPLE_HZ = 64000000;
   static constexpr uint32_t MAX_PARLIO_TRANSFER_BYTES = 65535;
-
   static constexpr uint8_t SHIFT_SAMPLES_PER_BIT = 2;
-  static constexpr uint8_t SHIFT_SETTLE_SAMPLES = 1;
-  static constexpr uint8_t LATCH_HIGH_SAMPLES = 2;
-  static constexpr uint8_t LATCH_LOW_SAMPLES = 1;
+  static constexpr uint8_t SHIFT_SETTLE_SAMPLES = 3;
+  static constexpr uint8_t LATCH_HIGH_SAMPLES = 3;
+  static constexpr uint8_t LATCH_LOW_SAMPLES = 2;
 
   static uint16_t nsToSamples(uint32_t ns);
 

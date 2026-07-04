@@ -10,6 +10,10 @@
 #include "esp_err.h"
 #include "esp_heap_caps.h"
 #include "soc/soc_caps.h"
+#if SHIFT_REGISTER_EXPERIMENTAL_SINGLE_TRANSACTION
+#include "esp_cache.h"
+#include "esp_memory_utils.h"
+#endif
 #define SHIFT_REGISTER_DRIVER_HAS_PARLIO 1
 #else
 #define SHIFT_REGISTER_DRIVER_HAS_PARLIO 0
@@ -327,10 +331,20 @@ bool ShiftRegisterClocklessLedDriver::configureTiming() {
 
 bool ShiftRegisterClocklessLedDriver::allocateFrameBuffer() {
 #if SHIFT_REGISTER_DRIVER_HAS_PARLIO
+#if SHIFT_REGISTER_EXPERIMENTAL_SINGLE_TRANSACTION
+  txBuffer_ = static_cast<uint8_t*>(
+      heap_caps_calloc(frameBytes_, 1, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+  if (txBuffer_ == nullptr) {
+    txBuffer_ = static_cast<uint8_t*>(
+        heap_caps_calloc(frameBytes_, 1,
+                         MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA | MALLOC_CAP_CACHE_ALIGNED));
+  }
+#else
   txBuffer_ = static_cast<uint8_t*>(
       heap_caps_calloc_prefer(frameBytes_, 1, 2,
                               MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL,
                               MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA | MALLOC_CAP_CACHE_ALIGNED));
+#endif
 #else
   txBuffer_ = nullptr;
 #endif
@@ -385,7 +399,11 @@ bool ShiftRegisterClocklessLedDriver::initHardware() {
   config.valid_stop_delay = 0;
   config.dma_burst_size = 64;
   config.trans_queue_depth = 16;
+#if SHIFT_REGISTER_EXPERIMENTAL_SINGLE_TRANSACTION
+  config.max_transfer_size = frameBytes_;
+#else
   config.max_transfer_size = MAX_PARLIO_TRANSFER_BYTES;
+#endif
   config.flags.clk_gate_en = 0;
   config.flags.io_loop_back = 0;
   config.flags.allow_pd = 0;
@@ -511,18 +529,52 @@ bool ShiftRegisterClocklessLedDriver::transmitFrame(size_t samples) {
   txConfig.flags.queue_nonblocking = 0;
   txConfig.flags.loop_transmission = 0;
 
+#if SHIFT_REGISTER_EXPERIMENTAL_SINGLE_TRANSACTION
+  const size_t transmitBytes = (samples * dataWidth_ + 7u) / 8u;
+  if (esp_ptr_external_ram(txBuffer_)) {
+    const int syncFlags = ESP_CACHE_MSYNC_FLAG_TYPE_DATA |
+                          ESP_CACHE_MSYNC_FLAG_DIR_C2M |
+                          ESP_CACHE_MSYNC_FLAG_UNALIGNED;
+    const esp_err_t syncErr = esp_cache_msync(txBuffer_, transmitBytes, syncFlags);
+    if (syncErr != ESP_OK) {
+      setError("showPixels: esp_cache_msync failed");
+      return false;
+    }
+  }
+
+  const esp_err_t transmitErr =
+      parlio_tx_unit_transmit(txUnit, txBuffer_, samples * dataWidth_, &txConfig);
+  if (transmitErr != ESP_OK) {
+    setError("showPixels: parlio_tx_unit_transmit failed");
+    return false;
+  }
+#else
   size_t maxSamplesPerChunk = (MAX_PARLIO_TRANSFER_BYTES * 8u) / dataWidth_;
-  if (dataWidth_ == 4) maxSamplesPerChunk &= ~size_t(1u);
+  if (bitSamples_ > 1 && maxSamplesPerChunk > bitSamples_) {
+    maxSamplesPerChunk = (maxSamplesPerChunk / bitSamples_) * bitSamples_;
+  }
+  if (dataWidth_ == 4) {
+    maxSamplesPerChunk &= ~size_t(1u);
+  }
+  if (maxSamplesPerChunk == 0) {
+    setError("showPixels: PARLIO chunk size is too small");
+    return false;
+  }
+
   const uint8_t* chunk = txBuffer_;
   size_t remainingSamples = samples;
-
   while (remainingSamples > 0) {
     size_t chunkSamples = remainingSamples;
-    if (chunkSamples > maxSamplesPerChunk) chunkSamples = maxSamplesPerChunk;
-    if (dataWidth_ == 4 && (chunkSamples & 1u) != 0 && chunkSamples > 1) chunkSamples--;
+    if (chunkSamples > maxSamplesPerChunk) {
+      chunkSamples = maxSamplesPerChunk;
+    }
+    if (dataWidth_ == 4 && (chunkSamples & 1u) != 0 && chunkSamples > 1) {
+      chunkSamples--;
+    }
 
-    const esp_err_t err = parlio_tx_unit_transmit(txUnit, chunk, chunkSamples * dataWidth_, &txConfig);
-    if (err != ESP_OK) {
+    const esp_err_t transmitErr =
+        parlio_tx_unit_transmit(txUnit, chunk, chunkSamples * dataWidth_, &txConfig);
+    if (transmitErr != ESP_OK) {
       setError("showPixels: parlio_tx_unit_transmit failed");
       return false;
     }
@@ -530,6 +582,7 @@ bool ShiftRegisterClocklessLedDriver::transmitFrame(size_t samples) {
     chunk += bytesForSamples(chunkSamples);
     remainingSamples -= chunkSamples;
   }
+#endif
 
   const esp_err_t err = parlio_tx_unit_wait_all_done(txUnit, portMAX_DELAY);
   if (err != ESP_OK) {

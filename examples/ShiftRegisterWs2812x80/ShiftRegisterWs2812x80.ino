@@ -1,7 +1,8 @@
 #include <ShiftRegisterClocklessLedDriver.h>
 
 // Starshroud-Contact board map from MCU_SER_1..MCU_SER_10.
-// SER_PINS[0] drives outputs 0..7, SER_PINS[1] drives outputs 8..15, etc.
+// SER_PINS[0] drives driver lanes 0..7, SER_PINS[1] drives lanes 8..15,
+// etc. Board LED_O labels are mapped to those lanes below.
 static constexpr uint8_t SER_PINS[10] = {
     50, 28, 29, 30, 31,
     26, 23, 22, 21, 20,
@@ -37,10 +38,32 @@ static Rgb colorWheel(uint8_t pos) {
   return Rgb{static_cast<uint8_t>(pos * 3), static_cast<uint8_t>(255 - pos * 3), 0};
 }
 
+static constexpr uint8_t driverOutputForBoardLabel(uint8_t oneBasedLabel) {
+  const uint8_t zeroBasedLabel = oneBasedLabel - 1;
+  if (oneBasedLabel < 41) {
+    return zeroBasedLabel;
+  }
+
+  const uint8_t shiftRegisterBase = static_cast<uint8_t>((zeroBasedLabel / 8u) * 8u);
+  const uint8_t shiftRegisterOffset = static_cast<uint8_t>(zeroBasedLabel % 8u);
+  return shiftRegisterOffset == 0
+             ? shiftRegisterBase
+             : static_cast<uint8_t>(shiftRegisterBase + 8u - shiftRegisterOffset);
+}
+
+static_assert(driverOutputForBoardLabel(1) == 0, "SHFT1 QA should map to lane 0");
+static_assert(driverOutputForBoardLabel(8) == 7, "SHFT1 QH should map to lane 7");
+static_assert(driverOutputForBoardLabel(41) == 40, "SHFT6 QA should map to lane 40");
+static_assert(driverOutputForBoardLabel(42) == 47, "SHFT6 QH should map to lane 47");
+static_assert(driverOutputForBoardLabel(48) == 41, "SHFT6 QB should map to lane 41");
+static_assert(driverOutputForBoardLabel(49) == 48, "SHFT7 QA should map to lane 48");
+static_assert(driverOutputForBoardLabel(56) == 49, "SHFT7 QB should map to lane 49");
+
 static void renderPattern(uint8_t phase) {
-  for (uint8_t output = 0; output < NUM_OUTPUTS; output++) {
+  for (uint8_t label = 1; label <= NUM_OUTPUTS; label++) {
+    const uint8_t output = driverOutputForBoardLabel(label);
     for (uint16_t i = 0; i < NUM_LEDS_PER_OUTPUT; i++) {
-      Rgb c = colorWheel(static_cast<uint8_t>(phase + output * 3 + i * 7));
+      Rgb c = colorWheel(static_cast<uint8_t>(phase + (label - 1) * 3 + i * 7));
       uint8_t* pixel = leds + ((static_cast<size_t>(output) * NUM_LEDS_PER_OUTPUT + i) * 3u);
       pixel[0] = c.r;
       pixel[1] = c.g;
@@ -64,7 +87,7 @@ void setup() {
     return;
   }
 
-  driver.setBrightness(32);
+  driver.setBrightness(15);
   driver.clear();
   driver.showPixels();
 
